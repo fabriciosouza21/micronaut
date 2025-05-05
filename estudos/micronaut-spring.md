@@ -1331,3 +1331,211 @@ class SaasSubscriptionGetListControllerTest {
 ## conclusão
 
 e bem parecido com o spring boot.
+
+# [Security Basic Authentication - Spring Boot vs Micronaut Framework - Building a Rest API](https://guides.micronaut.io/latest/building-a-rest-api-spring-boot-vs-micronaut-security-basic-auth-gradle-java.html)
+
+
+``` gradle
+
+implementation("io.micronaut.security:micronaut-security")
+implementation("org.springframework.security:spring-security-crypto:6.2.0")
+
+```
+
+## Entity
+
+``` java
+package example.micronaut;
+
+import io.micronaut.data.annotation.GeneratedValue;
+import io.micronaut.serde.annotation.Serdeable;
+import io.micronaut.data.annotation.Id;
+import io.micronaut.data.annotation.MappedEntity;
+
+@Serdeable //<1>
+@MappedEntity //<2>
+record SaasSubscription(@Id //<3>
+                        @GeneratedValue //<4>
+                        Long id,
+                        String name,
+                        Integer cents,
+                        String owner) {
+}
+```
+
+1. **@Serdeable** - anota o record para ser serializado.
+2. **@MappedEntity** - anota a classe como uma entidade do micronaut data
+3. **@Id** - anota o campo como um id da entidade
+
+## Repository
+
+``` java
+package example.micronaut;
+
+import io.micronaut.data.jdbc.annotation.JdbcRepository;
+import io.micronaut.data.model.Page;
+import io.micronaut.data.model.Pageable;
+import io.micronaut.data.model.query.builder.sql.Dialect;
+import io.micronaut.data.repository.PageableRepository;
+
+import java.util.Optional;
+
+@JdbcRepository(dialect = Dialect.H2)
+interface SaasSubscriptionRepository extends PageableRepository<SaasSubscription, Long> {
+
+    Optional<SaasSubscription> findByIdAndOwner(Long id, String owner);
+
+    Page<SaasSubscription> findByOwner(String owner, Pageable pageRequest);
+}
+```
+
+1. **@JdbcRepository** - anota a interface como um repositório do micronaut data
+2. **PageableRepository** extends **CrudRepository** automaticamente gerar o Crud.
+
+## Security
+
+``` java
+
+package example.micronaut;
+
+import io.micronaut.core.annotation.NonNull;
+import io.micronaut.core.annotation.Nullable;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.security.authentication.Authentication;
+import io.micronaut.security.authentication.AuthenticationRequest;
+import io.micronaut.security.authentication.AuthenticationResponse;
+import io.micronaut.security.authentication.provider.HttpRequestAuthenticationProvider;
+import jakarta.inject.Singleton;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+
+@Singleton
+class AppAuthenticationProvider<B> implements HttpRequestAuthenticationProvider<B> {
+
+    private static final String KEY_PASSWORD = "password";
+    private final Map<String, Authentication> users;
+    private final PasswordEncoder passwordEncoder;
+
+    AppAuthenticationProvider() {
+        passwordEncoder = new BCryptPasswordEncoder();
+        users = Map.of("sarah1",
+                Authentication.build("sarah1",
+                        Collections.singletonList("SAAS_SUBSCRIPTION_OWNER"),
+                        Collections.singletonMap(KEY_PASSWORD, passwordEncoder.encode("abc123"))),
+                "john-owns-no-subscriptions",
+                Authentication.build("john-owns-no-subscriptions",
+                        Collections.singletonList("NON-OWNER"),
+                        Collections.singletonMap(KEY_PASSWORD, passwordEncoder.encode("qrs456"))));
+    }
+
+    @Override
+    public @NonNull AuthenticationResponse authenticate(@Nullable HttpRequest<B> request,
+                                                        @NonNull AuthenticationRequest<String, String> form) {
+        return Optional.ofNullable(users.get(form.getIdentity()))
+                .filter(a -> passwordEncoder.matches(form.getSecret(), a.getAttributes().get(KEY_PASSWORD).toString()))
+                .map(authentication -> AuthenticationResponse.success(form.getIdentity(), authentication.getRoles()))
+                .orElse(AuthenticationResponse.failure());
+    }
+}
+```
+
+
+## Controller
+
+``` java
+
+package example.micronaut;
+
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.PathVariable;
+import java.security.Principal;
+import io.micronaut.security.annotation.Secured;
+
+@Controller("/subscriptions") //<1>
+@Secured("SAAS_SUBSCRIPTION_OWNER")//<2>
+class SaasSubscriptionController {
+
+    private final SaasSubscriptionRepository repository;
+
+    SaasSubscriptionController(SaasSubscriptionRepository repository) { //<3>
+        this.repository = repository;
+    }
+
+    @Get("/{id}")//<4>
+    HttpResponse<SaasSubscription> findById(@PathVariable Long id,//<5>
+											  @Nullable
+                                            Principal principal //<6>) {
+        return repository.findByIdAndOwner(id, principal.getName())
+                .map(HttpResponse::ok)
+                .orElseGet(HttpResponse::notFound); //<7>
+    }
+}
+```
+1. **@Controller** - anota a classe como um controlador REST para o path `/subscriptions`
+2. **@Secured** - anota a classe como um controlador seguro, que só pode ser acessado por usuários autenticados com o papel `SAAS_SUBSCRIPTION_OWNER`
+3. **SaasSubscriptionRepository** - injeta o repositório no construtor
+4. **@Get** - anota o método como um endpoint GET
+5. **@PathVariable** - anota o parâmetro como um path variable
+6. **Principal** - bind o usuário autenticado no método
+7. **HttpResponse** - o retorno do método é um HttpResponse, que é o retorno do micronaut
+
+
+## Testes
+
+``` java
+package example.micronaut;
+
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import io.micronaut.test.annotation.Sql;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.catchThrowableOfType;
+
+@Sql(value = {"classpath:schema.sql", "classpath:data.sql"})
+@MicronautTest
+class SecurityTest {
+
+    @Test
+    void shouldNotAllowAccessToSaasSubscriptionsTheyDoNotOwn(@Client("/") HttpClient httpClient) {
+        HttpRequest<?> request = HttpRequest.GET("/subscriptions/102")
+                .basicAuth("sarah1", "abc123");
+        HttpClientResponseException thrown = catchThrowableOfType(() ->
+                httpClient.toBlocking().exchange(request, String.class), HttpClientResponseException.class);
+        assertThat(thrown.getStatus().getCode()).isEqualTo(HttpStatus.NOT_FOUND.getCode());
+    }
+
+    @Test
+    void shouldRejectUsersWhoAreNotSubscriptionOwners(@Client("/") HttpClient httpClient) {
+        HttpRequest<?> badPasswordRequest = HttpRequest.GET("/subscriptions/99")
+                .basicAuth("john-owns-no-subscriptions", "qrs456");
+        HttpClientResponseException badPasswordEx = catchThrowableOfType(() ->
+                httpClient.toBlocking().exchange(badPasswordRequest, String.class), HttpClientResponseException.class);
+        assertThat(badPasswordEx.getStatus().getCode()).isEqualTo(HttpStatus.FORBIDDEN.getCode());
+    }
+
+    @Test
+    void shouldNotReturnASaasSubscriptionWithAnUnknownId(@Client("/") HttpClient httpClient) {
+        HttpRequest<?> request = HttpRequest.GET("/subscriptions/1000")
+                .basicAuth("sarah1", "BAD-PASSWORD");
+        HttpClientResponseException ex = catchThrowableOfType(() ->
+                httpClient.toBlocking().exchange(request, String.class), HttpClientResponseException.class);
+        assertThat(ex.getStatus().getCode()).isEqualTo(HttpStatus.UNAUTHORIZED.getCode());
+    }
+}
+```
+
+## Conclusão
+
+As duas configurações são bem similares.
