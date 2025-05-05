@@ -562,3 +562,231 @@ class SaasSubscriptionJsonTest {
 ## Conclusão
 
 A serialiazação no micronaut utilizar um biblioteca interna, para a leitura de json, pode utilizar [JsonPath](https://github.com/json-path/JsonPath), que é uma DSL para leitura de json.
+
+
+# Implementango o get do spring boot no micronaut Rest api
+
+
+## Controller
+
+Vou criar uma tabela em markdown que mantém a mesma estrutura e conteúdo da tabela que você compartilhou. Aqui está:
+
+# Tabela 1. Comparison between Spring Boot and Micronaut Framework
+
+|  | Spring Boot | Micronaut |
+|---|------------|-----------|
+| Mark a bean as a controller | Annotate with `@RestController` and `@RequestMapping` | Annotate with `@Controller` |
+| Identify a method as a GET endpoint | Annotate with `@GetMapping` | Annotate with `@Get` |
+| Identify a method parameter as a path variable | Annotate with Spring's `@PathVariable` | Annotate with Micronaut's `@PathVariable` |
+| Respond HTTP Responses with a status code and a body | Return a `ResponseEntity` | Return an `HttpResponse` |
+
+
+>	Outra diferença importante é a visibilidade dos métodos do controlador. O Micronaut Framework não utiliza reflexão (o que resulta em melhor desempenho e melhor integração com tecnologias como GraalVM) . Portanto, ele exige que os métodos do controlador sejam públicos, protegidos ou privados (sem modificadores). Ao longo destes tutoriais, os métodos dos controladores Micronaut utilizam privados.
+
+
+## Controller Spring Boot
+
+```java
+package example.micronaut;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController //<1>
+@RequestMapping("/subscriptions") //<2>
+class SaasSubscriptionController {
+
+    @GetMapping("/{id}") //<3>
+    private ResponseEntity<SaasSubscription> findById(@PathVariable Long id) { //<4>
+        if (id.equals(99L)) {
+            SaasSubscription subscription = new SaasSubscription(99L, "Advanced", 2900);
+            return ResponseEntity.ok(subscription);
+        }
+        return ResponseEntity.notFound().build();
+    }
+}
+```
+
+1. **@RestController** - anota a classe como um controlador REST
+2. **@RequestMapping** - identifica o path do controlador
+3. **@GetMapping** - identifica o método como um endpoint GET
+4. **@PathVariable** - identifica o parâmetro como um path variable
+
+## Controller Micronaut
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.PathVariable;
+
+@Controller("/subscriptions")
+class SaasSubscriptionController {
+
+    @Get("/{id}")
+    HttpResponse<SaasSubscription> findById(@PathVariable Long id) {
+        if (id.equals(99L)) {
+            SaasSubscription subscription = new SaasSubscription(99L, "Advanced", 2900);
+            return HttpResponse.ok(subscription);
+        }
+        return HttpResponse.notFound();
+    }
+}
+```
+
+1. **@Controller** - anota a classe como um controlador REST
+2. **@Get** - identifica o método como um endpoint GET
+3. **@PathVariable** - identifica o parâmetro como um path variable
+4. **HttpResponse** - o retorno do método é um HttpResponse, que é o retorno do micronaut
+
+> 	The default HTTP Status code in a Micronaut controller method is 200. However, when a Micronaut controller’s method returns null, the application responds with a 404 status code.
+
+
+``` java
+package example.micronaut;
+
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.PathVariable;
+
+@Controller("/subscriptions")//<1>
+class SaasSubscriptionController {
+
+    @Get("/{id}")//<2>
+    SaasSubscription findById(@PathVariable Long id) {//<3>
+        if (id.equals(99L)) {
+            return new SaasSubscription(99L, "Advanced", 2900);
+        }
+        return null;//<4>
+    }
+}
+```
+
+1. **@Controller** - anota a classe como um controlador REST
+2. **@Get** - identifica o método como um endpoint GET
+3. **@PathVariable** - identifica o parâmetro como um path variable
+4. **null** - o retorno do método é null, o que resulta em um 404
+
+O micronaut supoorta validação de rotas em tempo de compilação,
+
+``` gradle
+annotationProcessor("io.micronaut:micronaut-http-validation")
+```
+
+Por exemplo, se você substituir a @Get("/{id}")anotação por @Get("/{identifier}"), o aplicativo não será compilado.
+
+## Testes
+
+### Spring Boot
+
+```java
+
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class SaasSubscriptionControllerGetTest {
+
+    @Autowired
+    TestRestTemplate restTemplate;
+
+    @Test
+    void shouldReturnASaasSubscriptionWhenDataIsSaved() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/subscriptions/99", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        DocumentContext documentContext = JsonPath.parse(response.getBody());
+        Number id = documentContext.read("$.id");
+        assertThat(id).isNotNull();
+        assertThat(id).isEqualTo(99);
+
+        String name = documentContext.read("$.name");
+        assertThat(name).isNotNull();
+        assertThat(name).isEqualTo("Advanced");
+
+        Integer cents = documentContext.read("$.cents");
+        assertThat(cents).isEqualTo(2900);
+    }
+
+    @Test
+    void shouldNotReturnASaasSubscriptionWithAnUnknownId() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/subscriptions/1000", String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody()).isBlank();
+    }
+}
+```
+
+### Micronaut
+
+```java
+
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.catchThrowableOfType;
+
+@MicronautTest
+class SaasSubscriptionControllerGetTest {
+
+    @Inject
+    @Client("/")
+    HttpClient httpClient;
+
+    @Test
+    void shouldReturnASaasSubscriptionWhenDataIsSaved() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        HttpResponse<String> response = client.exchange("/subscriptions/99", String.class);
+        assertThat(response.status().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(response.body());
+        Number id = documentContext.read("$.id");
+        assertThat(id).isNotNull();
+        assertThat(id).isEqualTo(99);
+
+        String name = documentContext.read("$.name");
+        assertThat(name).isNotNull();
+        assertThat(name).isEqualTo("Advanced");
+
+        Integer cents = documentContext.read("$.cents");
+        assertThat(cents).isEqualTo(2900);
+    }
+
+    @Test
+    void shouldNotReturnASaasSubscriptionWithAnUnknownId() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        HttpClientResponseException thrown = catchThrowableOfType(() ->
+                client.exchange("/subscriptions/1000", String.class), HttpClientResponseException.class);
+        assertThat(thrown.getStatus().getCode()).isEqualTo(HttpStatus.NOT_FOUND.getCode());
+        assertThat(thrown.getResponse().getBody()).isEmpty();
+    }
+}
+```
