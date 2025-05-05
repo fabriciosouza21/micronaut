@@ -571,7 +571,7 @@ A serialiazação no micronaut utilizar um biblioteca interna, para a leitura de
 
 Vou criar uma tabela em markdown que mantém a mesma estrutura e conteúdo da tabela que você compartilhou. Aqui está:
 
-# Tabela 1. Comparison between Spring Boot and Micronaut Framework
+## Tabela 1. Comparison between Spring Boot and Micronaut Framework
 
 |  | Spring Boot | Micronaut |
 |---|------------|-----------|
@@ -754,12 +754,12 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.catchThrowableOfType;
 
-@MicronautTest
+@MicronautTest //<1>
 class SaasSubscriptionControllerGetTest {
 
     @Inject
     @Client("/")
-    HttpClient httpClient;
+    HttpClient httpClient;//<2>
 
     @Test
     void shouldReturnASaasSubscriptionWhenDataIsSaved() {
@@ -783,10 +783,210 @@ class SaasSubscriptionControllerGetTest {
     @Test
     void shouldNotReturnASaasSubscriptionWithAnUnknownId() {
         BlockingHttpClient client = httpClient.toBlocking();
-        HttpClientResponseException thrown = catchThrowableOfType(() ->
+        HttpClientResponseException thrown = catchThrowableOfType(() -> // <3>
                 client.exchange("/subscriptions/1000", String.class), HttpClientResponseException.class);
         assertThat(thrown.getStatus().getCode()).isEqualTo(HttpStatus.NOT_FOUND.getCode());
         assertThat(thrown.getResponse().getBody()).isEmpty();
+    }
+}
+```
+
+1. **@MicronautTest** - inicializa o contexto do micronaut e injeta o bean.
+2. **HttpClient** - um bean que aponta para o servidor incorporado.
+3. **HttpClientResponseException** - Quando o cliente HTTP recebe uma resposta com um código de status HTTP >= 400, ele lança um HttpClientResponseException. Você pode obter o status e o corpo da resposta a partir da exceção.
+
+
+# [Post spring boot vs micronaut](https://guides.micronaut.io/latest/building-a-rest-api-spring-boot-vs-micronaut-post-gradle-java.html)
+
+Micronaut Data é um data base access toolkit que usuar, Aheade compilationTime, para prè-computar consultas para interface de repositório, que não são então executadas por uma camada de tempo de execução final e leve.
+
+
+
+## Controlador
+
+é um endpoint Post que retorna a resposta 201.
+
+
+## Tabela 1. Comparação entre Spring Boot e Micronaut Framework
+
+|  | Bota de mola | Micronaut |
+|---|------------|-----------|
+| Identificar um método como um ponto de extremidade POST | `@PostMapping` | `@Post` |
+| Ler e desserializar o corpo da solicitação para um parâmetro de método | `@RequestBody` | `@Body` |
+| Fluid ApI para construir um URI | `UriComponentsBuilder` | `UriBuilder` |
+
+
+## Spring Boot
+
+```java
+package example.micronaut;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.net.URI;
+
+@RestController
+@RequestMapping("/subscriptions")
+public class SaasSubscriptionPostController {
+
+    private final SaasSubscriptionRepository repository;
+
+    private SaasSubscriptionPostController(SaasSubscriptionRepository repository) {
+        this.repository = repository;
+    }
+
+    @PostMapping
+    private ResponseEntity<Void> createSaasSubscription(@RequestBody SaasSubscription newSaasSubscription,
+                                                        UriComponentsBuilder ucb) {
+        SaasSubscription subscription = repository.save(newSaasSubscription);
+        URI locationOfSubscription = ucb
+                .path("subscriptions/{id}")
+                .buildAndExpand(subscription.id())
+                .toUri();
+        return ResponseEntity.created(locationOfSubscription).build();
+    }
+}
+```
+
+
+## Micronaut
+
+```java
+package example.micronaut;
+
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Body;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Post;
+import io.micronaut.http.uri.UriBuilder;
+
+import java.net.URI;
+
+@Controller("/subscriptions") //<1>
+class SaasSubscriptionPostController {
+
+    private final SaasSubscriptionRepository repository;
+
+    SaasSubscriptionPostController(SaasSubscriptionRepository repository) { //<2>
+        this.repository = repository;
+    }
+
+    @Post //<3>
+    HttpResponse<?> createSaasSubscription(@Body SaasSubscription newSaasSubscription) { //<4>
+        SaasSubscription savedSaasSubscription = repository.save(newSaasSubscription);
+        URI locationOfNewSaasSubscription = UriBuilder.of("/subscriptions") //<5>
+                .path(savedSaasSubscription.id().toString())
+                .build();
+        return HttpResponse.created(locationOfNewSaasSubscription);
+    }
+}
+
+```
+
+1. **@Controller** - anota a classe como um controlador REST para o path `/subscriptions`
+2. **SaasSubscriptionPostController** - injeta o repositório no construtor
+3. **@Post** - anota o método como um endpoint POST
+4. **@Body** - anota o parâmetro como um body
+5. **UriBuilder** - cria o URI para o novo recurso criado
+
+## Testes
+
+### Spring Boot
+
+``` java
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import java.net.URI;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class SaasSubscriptionPostControllerTest {
+
+    @Autowired
+    TestRestTemplate restTemplate;
+
+    @Test
+    void shouldCreateANewSaasSubscription() {
+        SaasSubscription newSaasSubscription = new SaasSubscription(null, "Advanced", 2500);
+        ResponseEntity<Void> createResponse = restTemplate.postForEntity("/subscriptions", newSaasSubscription, Void.class);
+        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        URI locationOfNewSaasSubscription = createResponse.getHeaders().getLocation();
+        ResponseEntity<String> getResponse = restTemplate.getForEntity(locationOfNewSaasSubscription, String.class);
+        assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        DocumentContext documentContext = JsonPath.parse(getResponse.getBody());
+        Number id = documentContext.read("$.id");
+        assertThat(id).isNotNull();
+
+        Integer cents = documentContext.read("$.cents");
+        assertThat(cents).isEqualTo(2500);
+    }
+}
+```
+
+
+### Micronaut
+
+```java
+
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.http.HttpHeaders;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import org.junit.jupiter.api.Test;
+
+import java.net.URI;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@MicronautTest
+class SaasSubscriptionPostControllerTest {
+
+    @Test
+    void shouldCreateANewSaasSubscription(@Client("/") HttpClient httpClient) {
+        BlockingHttpClient client = httpClient.toBlocking();
+        SaasSubscription subscription = new SaasSubscription(100L, "Advanced", 2900);
+
+        HttpResponse<Void> createResponse = client.exchange(HttpRequest.POST("/subscriptions", subscription), Void.class);
+        assertThat(createResponse.getStatus().getCode()).isEqualTo(HttpStatus.CREATED.getCode());
+        Optional<URI> locationOfNewSaasSubscriptionOptional = createResponse.getHeaders().get(HttpHeaders.LOCATION, URI.class);
+        assertThat(locationOfNewSaasSubscriptionOptional).isPresent();
+
+        URI locationOfNewSaasSubscription = locationOfNewSaasSubscriptionOptional.get();
+        HttpResponse<String> getResponse = client.exchange(HttpRequest.GET(locationOfNewSaasSubscription), String.class);
+        assertThat(getResponse.getStatus().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(getResponse.body());
+        Number id = documentContext.read("$.id");
+        assertThat(id).isNotNull();
+
+        Integer cents = documentContext.read("$.cents");
+        assertThat(cents).isEqualTo(2900);
     }
 }
 ```
