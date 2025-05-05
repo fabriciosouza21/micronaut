@@ -293,3 +293,63 @@ O guia mostra a diferença entre a geração de beans do spring e do micronaut, 
 
 
 > 	O Spring depende da varredura de classpath para encontrar classes anotadas com @Component. No aplicativo Spring Boot, HelloGreeter é detectado porque o aplicativo contém uma classe Applicationcom a @SpringBootApplication anotação. A @SpringBootApplication anotação aplica a @ComponentScan anotação, que instrui o Spring a varrer o pacote onde a Applicationclasse está localizada e seus subpacotes.
+
+
+# Bulding Uris
+
+é muito utis para construir uris.
+
+## Spring Boot
+
+``` java
+
+package example.micronaut;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class UriComponentsBuilderTest {
+
+    @Test
+    void youCanUseUriComponentsBuilderToBuildUris() {
+        String isbn = "1680502395";
+        assertEquals("/book/1680502395?lang=es", UriComponentsBuilder.fromUriString("/book")
+                .path("/" + isbn)
+                .queryParam("lang", "es")
+                .build()
+                .toUriString());
+    }
+}
+```
+
+
+## Micronaut
+
+``` java
+
+package example.micronaut;
+
+import io.micronaut.http.uri.UriBuilder;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class UriBuilderTest {
+
+    @Test
+    void youCanUseUriBuilderToBuildUris() {
+        String isbn = "1680502395";
+        assertEquals("/book/1680502395?lang=es", UriBuilder.of("/book")
+                .path(isbn)
+                .queryParam("lang", "es")
+                .build()
+                .toString());
+    }
+}
+```
+
+## Conclusão
+
+A sintaxe do micronaut é mais simples, o nome da classe é mais simles.
