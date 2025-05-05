@@ -353,3 +353,212 @@ public class UriBuilderTest {
 ## Conclusão
 
 A sintaxe do micronaut é mais simples, o nome da classe é mais simles.
+
+# Run a spring bott application como uma aplicação micronaut
+
+a dependencia `spring-boot`, permiter usar as tradicionais spring annotations.
+
+# Micronaut data from a spring boot application
+
+basta usar o micronaut spring boot starte para usar micronaut features com spring boot.
+
+# Testing serialização spirng boot vs micronaunt framework
+
+Esse guia compara como os teste serialização do spring e do micronaut
+
+
+## Record
+
+```java
+
+package example.micronaut;
+
+record SaasSubscription(Long id, String name, Integer cents) {
+}
+
+```
+
+
+## micronaut
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.serde.annotation.Serdeable;
+
+@Serdeable
+record SaasSubscription(Long id, String name, Integer cents) {
+}
+
+```
+
+1. **@Serdeable** - anota o record para ser serializado.
+
+## json esperado
+
+```json
+
+{
+  "id": 1,
+  "name": "Micronaut",
+  "cents": 1000
+}
+```
+
+
+## Tests
+
+
+### Spring Boot
+
+```java
+
+package example.micronaut;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.json.JsonTest;
+import org.springframework.boot.test.json.JacksonTester;
+
+import java.io.IOException;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@JsonTest
+class SaasSubscriptionJsonTest {
+
+    @Autowired
+    private JacksonTester<SaasSubscription> json;
+
+    @Test
+    void saasSubscriptionSerializationTest() throws IOException {
+        SaasSubscription subscription = new SaasSubscription(99L, "Professional", 4900);
+        assertThat(json.write(subscription)).isStrictlyEqualToJson("expected.json");
+        assertThat(json.write(subscription)).hasJsonPathNumberValue("@.id");
+        assertThat(json.write(subscription)).extractingJsonPathNumberValue("@.id")
+                .isEqualTo(99);
+        assertThat(json.write(subscription)).hasJsonPathStringValue("@.name");
+        assertThat(json.write(subscription)).extractingJsonPathStringValue("@.name")
+                .isEqualTo("Professional");
+        assertThat(json.write(subscription)).hasJsonPathNumberValue("@.cents");
+        assertThat(json.write(subscription)).extractingJsonPathNumberValue("@.cents")
+                .isEqualTo(4900);
+    }
+
+    @Test
+    void saasSubscriptionDeserializationTest() throws IOException {
+        String expected = """
+           {
+               "id":100,
+               "name": "Advanced",
+               "cents":2900
+           }
+           """;
+        assertThat(json.parse(expected))
+                .isEqualTo(new SaasSubscription(100L, "Advanced", 2900));
+        assertThat(json.parseObject(expected).id()).isEqualTo(100);
+        assertThat(json.parseObject(expected).name()).isEqualTo("Advanced");
+        assertThat(json.parseObject(expected).cents()).isEqualTo(2900);
+    }
+}
+```
+
+1. **@JsonTest** - é um auto-configures um ObjectMapper
+2. **JacksonTester** - é um teste de unidade para serialização e desserialização de objetos JSON.
+
+
+
+### Micronaut
+
+A única personalização que você pode especificar com `@MicronautTest' é se deseja iniciar um servidor embarcado ou não.
+
+```java
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.core.io.ResourceLoader;
+import io.micronaut.json.JsonMapper;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import org.junit.jupiter.api.Test;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@MicronautTest(startApplication = false)
+class SaasSubscriptionJsonTest {
+
+    @Test
+    void saasSubscriptionSerializationTest(JsonMapper json, ResourceLoader resourceLoader) throws IOException {
+        SaasSubscription subscription = new SaasSubscription(99L, "Professional", 4900);
+        String expected = getResourceAsString(resourceLoader, "expected.json");
+        String result = json.writeValueAsString(subscription);
+        assertThat(result).isEqualToIgnoringWhitespace(expected);
+        DocumentContext documentContext = JsonPath.parse(result);
+        Number id = documentContext.read("$.id");
+        assertThat(id)
+                .isNotNull()
+                .isEqualTo(99);
+
+        String name = documentContext.read("$.name");
+        assertThat(name)
+                .isNotNull()
+                .isEqualTo("Professional");
+
+        Number cents = documentContext.read("$.cents");
+        assertThat(cents)
+                .isNotNull()
+                .isEqualTo(4900);
+    }
+
+    @Test
+    void saasSubscriptionDeserializationTest(JsonMapper json) throws IOException {
+        String expected = """
+           {
+               "id":100,
+               "name": "Advanced",
+               "cents":2900
+           }
+           """;
+        assertThat(json.readValue(expected, SaasSubscription.class))
+                .isEqualTo(new SaasSubscription(100L, "Advanced", 2900));
+        assertThat(json.readValue(expected, SaasSubscription.class).id()).isEqualTo(100);
+        assertThat(json.readValue(expected, SaasSubscription.class).name()).isEqualTo("Advanced");
+        assertThat(json.readValue(expected, SaasSubscription.class).cents()).isEqualTo(2900);
+    }
+
+    private static String getResourceAsString(ResourceLoader resourceLoader, String resourceName) {
+        return resourceLoader.getResourceAsStream(resourceName)
+                .flatMap(stream -> {
+                    try (InputStream is = stream;
+                         Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
+                         BufferedReader bufferedReader = new BufferedReader(reader)) {
+                        return Optional.of(bufferedReader.lines().collect(Collectors.joining("\n")));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    return Optional.empty();
+                })
+                .orElse("");
+    }
+}
+```
+
+> Cada @Test método é encapsulado em uma trasação que será encapsulado em uma trasação que será revertida. esse comportamento pode ser alterado utilizando o parametro transaction como false em @MicronautTest
+
+1. **@MicronautTest** - para que o framework Micronaut inicialize o contexto da aplicação e o servidor embarcado.
+2. por padrão, com o Junit5, os paâmentro s do método de teste serão resolvido para bens, se possível.
+
+
+## Conclusão
+
+A serialiazação no micronaut utilizar um biblioteca interna, para a leitura de json, pode utilizar [JsonPath](https://github.com/json-path/JsonPath), que é uma DSL para leitura de json.
