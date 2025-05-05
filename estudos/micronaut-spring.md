@@ -176,3 +176,120 @@ Esse guia ilustra que a Api @Configuration do spring e factory em ambos framewor
 ## Referências
 
 - [Manually define a Bean](https://guides.micronaut.io/latest/spring-boot-to-micronaut-at-configuration-at-bean-at-factory-maven-java.html)
+
+
+# mark a classe como um bean
+
+## Criação da interface
+
+``` java
+package example.micronaut;
+
+public interface Greeter {
+    String greet();
+}
+```
+
+
+## Spring boot
+
+Nos spring utilizamos a anotação @Component para marcar a classe como um bean.
+
+``` java
+
+package example.micronaut;
+import org.springframework.stereotype.Component;
+
+@Component
+public class HelloGreeter implements Greeter {
+    @Override
+    public String greet() {
+        return "Hello";
+    }
+}
+```
+
+### Test
+
+``` java
+
+package example.micronaut;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest
+class GreeterTest {
+
+    @Autowired
+    Greeter greeter;
+
+    @Test
+    void helloGreeterIsInjectedAsBeanOfTypeGreeter() {
+        assertNotNull(greeter);
+        assertEquals("Hello", greeter.greet());
+    }
+
+}
+```
+
+## Micronaut
+
+No micronaut utilizamos a anotação @Singleton para marcar a classe como um bean.
+
+``` java
+
+package example.micronaut;
+
+import jakarta.inject.Singleton;
+
+@Singleton
+public class HelloGreeter implements Greeter {
+    @Override
+    public String greet() {
+        return "Hello";
+    }
+}
+
+```
+
+
+1. **@Singleton** - marca a classe como um bean do micronaut, jakata.inject.Singleton
+
+### Test
+
+``` java
+
+package example.micronaut;
+
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+@MicronautTest
+class GreeterTest {
+
+    @Inject
+    Greeter greeter;
+
+    @Test
+    void helloGreeterIsInjectedAsBeanOfTypeGreeter() {
+        assertNotNull(greeter);
+        assertEquals("Hello", greeter.greet());
+    }
+
+}
+```
+
+## Conclusão
+
+O guia mostra a diferença entre a geração de beans do spring e do micronaut, enquanto o spring utilizar a anotação @Componente que é uma anotação constomizada para o spring, o micronaut utiliza a anotação @Singleton que é uma anotação do jakarta.inject.Singleton.
+
+> O micronaut gerar is informações necessárias para preencher os pontos de injeção no momento da compilação.
+
+
+> 	O Spring depende da varredura de classpath para encontrar classes anotadas com @Component. No aplicativo Spring Boot, HelloGreeter é detectado porque o aplicativo contém uma classe Applicationcom a @SpringBootApplication anotação. A @SpringBootApplication anotação aplica a @ComponentScan anotação, que instrui o Spring a varrer o pacote onde a Applicationclasse está localizada e seus subpacotes.
