@@ -569,8 +569,6 @@ A serialiazação no micronaut utilizar um biblioteca interna, para a leitura de
 
 ## Controller
 
-Vou criar uma tabela em markdown que mantém a mesma estrutura e conteúdo da tabela que você compartilhou. Aqui está:
-
 ## Tabela 1. Comparison between Spring Boot and Micronaut Framework
 
 |  | Spring Boot | Micronaut |
