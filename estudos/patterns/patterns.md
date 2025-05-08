@@ -2,7 +2,7 @@
 
 # [patterns](https://guides.micronaut.io/latest/micronaut-patterns-composite-maven-java.html)
 
-Um padrão comum no desenvolvimento de aplicações Micronaut é criar uma interface funcional ordenada. Muitas vezes, você deseja avaliar cada implementação em ordem. Combinando a @Primaryanotação e a injeção de uma coleção de beans de um tipo específico, você alcança esse padrão facilmente em uma aplicação Micronaut.
+Um padrão comum no desenvolvimento de aplicações Micronaut é criar uma interface funcional ordenada. Muitas vezes, você deseja avaliar cada implementação em ordem. Combinando a @Primarya notação e a injeção de uma coleção de beans de um tipo específico, você alcança esse padrão facilmente em uma aplicação Micronaut.
 
 ``` java
 package example.micronaut;
